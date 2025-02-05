@@ -27,7 +27,7 @@ public class RayTracerReflectionsMultiTeapot {
         scene.vertices.addAll(secondTeapot.vertices);
 
         // Camera setup
-        Camera camera = Camera(new Vector3(0, 2, 6), new Vector3(0, 0, -1), 100);
+        Camera camera = new Camera(new Vector3(0, 2, 6), new Vector3(0, 0, -1), 100);
 
         int width = 800;
         int height = 600;
@@ -217,7 +217,7 @@ class OBJParser {
                     case "f":
                         int[] faceVertices = new int[tokens.length - 1];
                         for (int i = 0; i < faceVertices.length; i++) {
-                            face.Vertices[i] = Integer.parseInt(tokens[i + 1].split("/")[0]) - 1;
+                            faceVertices[i] = Integer.parseInt(tokens[i + 1].split("/")[0]) - 1;
                         }
                         scene.faces.add(new Face(faceVertices))
 ;
