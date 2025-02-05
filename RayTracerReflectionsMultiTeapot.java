@@ -126,6 +126,11 @@ class Vector3 {
     double dot (Vector3 v) {
         return x * v.x + y * v.y + z * v.z;
     }
+
+    Vector3 normalize() {
+        double length = Math.sqrt(x * y + y * y + z * z);
+        return new Vector3(x / length, y / length, z / length);
+    }
 }
 
 class Face {
