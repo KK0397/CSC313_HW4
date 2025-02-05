@@ -25,6 +25,7 @@ public class RayTracerReflectionsMultiTeapot {
 
         // Combine both scenes
         scene.vertices.addAll(secondTeapot.vertices);
+        scene.faces.addAll(secondTeapot.faces);
 
         // Camera setup
         Camera camera = new Camera(new Vector3(0, 2, 6), new Vector3(0, 0, -1), 100);
@@ -154,7 +155,7 @@ class RayTracer {
         double f = 1.0 / a;
         Vector3 s = ray.origin.subtract(v0);
         double u = f * s.dot(h);
-        if (u < 0.0 || u < 1.0) {
+        if (u < 0.0 || u > 1.0) {
             return new Intersection(false, 0, null, null);
         }
 
@@ -245,6 +246,7 @@ class RenderTask implements Runnable {
     public RenderTask(Scene scene, Camera camera, BufferedImage image, int width, int height, int startY, int endY) {
         this.scene = scene;
         this.camera = camera;
+        this.image = image;
         this.width = width;
         this.height = height;
         this.startY = startY;
