@@ -1,6 +1,3 @@
-// javac RayTracerReflectionsMultiTeapot.java
-// java RayTracerReflectionsMultiTeapot
-
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -12,6 +9,7 @@ import java.io.IOException;
 
 public class RayTracerReflectionsMultiTeapot {
     public static void main(String[] args) throws IOException {
+        int imageCounter = 6;
         // Load the first teapot
         Scene scene = OBJParser.parse("teapot.obj");
         int originalVertexCount = scene.vertices.size();
@@ -27,6 +25,9 @@ public class RayTracerReflectionsMultiTeapot {
         scene.vertices.addAll(secondTeapot.vertices);
         scene.faces.addAll(secondTeapot.faces);
 
+        // Add a light source to the scene
+        scene.lightPosition = new Vector3(5, 5, 5); // Light source position
+
         // Camera setup
         Camera camera = new Camera(new Vector3(0, 2, 6), new Vector3(0, 0, -1), 100);
 
@@ -34,7 +35,7 @@ public class RayTracerReflectionsMultiTeapot {
         int height = 600;
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
 
-        // Determine the number of threads (e.g., 8 for 8-core CPU
+        // Determine the number of threads (e.g., 8 for 8-core CPU)
         int numThreads = Runtime.getRuntime().availableProcessors();
         int rowsPerThread = height / numThreads;
 
@@ -60,9 +61,9 @@ public class RayTracerReflectionsMultiTeapot {
                 e.printStackTrace();
             }
         }
+        String filename = "output_" + imageCounter + ".png";
+        ImageIO.write(image, "png", new File(filename));
 
-        // Save the final rendered image
-        ImageIO.write(image, "png", new File("output.png"));
     }
 
     private static void adjustFaceIndices(Scene scene, int vertexOffset) {
@@ -85,6 +86,9 @@ public class RayTracerReflectionsMultiTeapot {
 class Scene {
     ArrayList<Vector3> vertices = new ArrayList<>();
     ArrayList<Face> faces = new ArrayList<>();
+    // CHANGE: Added a light source position to the scene
+    // WHY: Shadows are calculated based on the position of the light source relative to objects.
+    Vector3 lightPosition; // Light source position
 }
 
 class Camera {
@@ -112,11 +116,11 @@ class Vector3 {
     }
 
     Vector3 cross(Vector3 v) {
-        return new Vector3 (
+        return new Vector3(
                 y * v.z - z * v.y,
                 z * v.x - x * v.z,
                 x * v.y - y * v.x
-            );
+        );
     }
 
     // Multiplies the vector by a scalar
@@ -124,7 +128,7 @@ class Vector3 {
         return new Vector3(x * scalar, y * scalar, z * scalar);
     }
 
-    double dot (Vector3 v) {
+    double dot(Vector3 v) {
         return x * v.x + y * v.y + z * v.z;
     }
 
@@ -167,15 +171,14 @@ class RayTracer {
 
         double t = f * edge2.dot(q);
         if (t > EPSILON) {
-            Vector3 intersectionPoint = new Vector3 (
+            Vector3 intersectionPoint = new Vector3(
                     ray.origin.x + ray.direction.x * t,
                     ray.origin.y + ray.direction.y * t,
                     ray.origin.z + ray.direction.z * t
             );
             Vector3 normal = edge1.cross(edge2).normalize();
             return new Intersection(true, t, intersectionPoint, normal);
-        }
-        else {
+        } else {
             return new Intersection(false, 0, null, null);
         }
     }
@@ -206,7 +209,7 @@ class Intersection {
 }
 
 class OBJParser {
-    public static Scene parse (String filePath) throws IOException {
+    public static Scene parse(String filePath) throws IOException {
         Scene scene = new Scene();
         try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
             String line;
@@ -225,9 +228,9 @@ class OBJParser {
                         for (int i = 0; i < faceVertices.length; i++) {
                             faceVertices[i] = Integer.parseInt(tokens[i + 1].split("/")[0]) - 1;
                         }
-                        scene.faces.add(new Face(faceVertices))
-;
-                break;}
+                        scene.faces.add(new Face(faceVertices));
+                        break;
+                }
             }
         }
         return scene;
@@ -268,7 +271,7 @@ class RenderTask implements Runnable {
                 Ray ray = new Ray(camera.position, rayDirection);
 
                 Color color = traceRay(ray, scene, 0); // Recursion depth
-                synchronized(image) {
+                synchronized (image) {
                     image.setRGB(x, y, color.getRGB());
                 }
             }
@@ -293,6 +296,24 @@ class RenderTask implements Runnable {
         }
 
         if (closestIntersection != null) {
+            // CHANGE: Shadow calculation
+            // WHY: To determine if the point is in shadow I cast a ray from the intersection point to the light source.
+            Vector3 lightDirection = scene.lightPosition.subtract(closestIntersection.point).normalize();
+            Ray shadowRay = new Ray(closestIntersection.point, lightDirection);
+            boolean inShadow = false;
+
+            for (Face face : scene.faces) {
+                Vector3 v0 = scene.vertices.get(face.vertices[0]);
+                Vector3 v1 = scene.vertices.get(face.vertices[1]);
+                Vector3 v2 = scene.vertices.get(face.vertices[2]);
+
+                Intersection shadowIntersection = RayTracer.intersectRayTriangle(shadowRay, v0, v1, v2);
+                if (shadowIntersection.hit && shadowIntersection.distance > 0.0001) {
+                    inShadow = true;
+                    break;
+                }
+            }
+
             // Calculate reflection
             Vector3 reflectedDirection = reflect(ray.direction, closestIntersection.normal).normalize();
             Ray reflectedRay = new Ray(closestIntersection.point, reflectedDirection);
@@ -304,6 +325,14 @@ class RenderTask implements Runnable {
             int r = (int) (0.5 * reflectedColor.getRed() + 0.5 * 255); // adjust the factor for blending
             int g = (int) (0.5 * reflectedColor.getGreen() + 0.5 * 255);
             int b = (int) (0.5 * reflectedColor.getBlue() + 0.5 * 255);
+
+            // CHANGE: Apply shadow
+            // WHY: If the point is in shadow, darken the color to simulate the shadow effect.
+            if (inShadow) {
+                r = (int) (r * 0.5);
+                g = (int) (g * 0.5);
+                b = (int) (b * 0.5);
+            }
 
             return new Color(Math.min(r, 255), Math.min(g, 255), Math.min(b, 255));
         } else {
@@ -319,3 +348,10 @@ class RenderTask implements Runnable {
 
     private static final int MAX_REFLECTION_DEPTH = 3;
 }
+//Light Source: Added a lightPosition field to the Scene class.
+
+//Shadow Ray Calculation: After finding the closest intersection, a shadow ray is cast from the intersection point to the light source.
+
+//Shadow Check: The shadow ray is checked against all objects in the scene. If it intersects any object before reaching the light, the point is in shadow.
+
+//Adjust Color: If the point is in shadow, the color is darkened to simulate the shadow effect.
